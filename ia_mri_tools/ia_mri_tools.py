@@ -32,10 +32,37 @@ def noise_level(data, tol=1e-2):
         UFK = Q2 + 1.5*Q13
         # check for convergence
         if abs(UFK-UF)/UF < tol:
-            return UFK
+            UF = UFK
+            break
         else:
             UF = UFK
+    else:
+        logger.warning('Warning, number of iterations exceeded')
 
-    logger.warning('Warning, number of iterations exceeded')
+    # recompute the quartiles
+    Q1, Q2, Q3 = np.percentile(d[d<UF], [25,50,75])
+    Q13 = Q3-Q1
+    # Q1, Q2, Q3 describes the noise
+    # anything above this is a noise outlier above (possibly signal)
+    UF = Q2 + 1.5*Q13
+    # anything below LF is a signal outlier below (not useful)
+    LF = Q2 - 1.5*Q13
+    # but remember that the noise distribution is NOT symmetric, so UF is an underestimate
 
-    return UF
+    return LF, Q2, UF
+
+
+def signal_likelihood(data, noise=None):
+    """Return a likelihood that data is signal
+
+    in SNR units, sigmoid with width 1, shifted to the right by 1
+    ie P(<1)=0, P(2)=0.46, P(3)=0.76, P(4)=0.01, P(5)=0.96
+    """
+
+    if not noise:
+        _, _, noise = noise_level(data)
+
+    # The probability that each point has a signal
+    P = (data>noise) * (-1 + 2 / (1+np.exp(-(data-noise)/noise)))
+
+    return P
