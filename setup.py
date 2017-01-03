@@ -30,8 +30,8 @@ setup(
     packages=[
         'ia_mri_tools',
     ],
-    package_dir={'ia_mri_tools':
-                 'ia_mri_tools'},
+    package_dir={'ia_mri_tools': 'ia_mri_tools'},
+    package_data={'ia_mri_tools': ['data/HCP/100307/*']},
     entry_points={
         'console_scripts': [
             'ia_mri_tools=ia_mri_tools.cli:main'
