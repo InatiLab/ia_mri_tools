@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-import scipy as sp
+from scipy.ndimage import uniform_filter, gaussian_filter, gaussian_gradient_magnitude, gaussian_laplace
 import logging
 
 logger = logging.getLogger(__name__)
+
+# To show debug messages, uncomment this
+# from outside the module, import the logger object and use something like this
+# logger.setLevel(logging.DEBUG)
 
 # add a console handler
 ch = logging.StreamHandler()
@@ -12,57 +16,129 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 
-def noise_level(data, tol=1e-2):
+def noise_stats(data, tol=1e-2):
 
-    d = data[data>0].flatten()
+    d = data[data > 0].flatten()
 
     # find the quartiles of the non-zero data
-    Q1, Q2, Q3 = np.percentile(d,[25,50,75])
-    logger.debug('Quartiles of the original data: {}, {}, {}'.format(Q1 , Q2, Q3))
+    q1, q2, q3 = np.percentile(d, [25, 50, 75])
+    logger.debug('Quartiles of the original data: {}, {}, {}'.format(q1, q2, q3))
 
     # find the quartiles of the non-zero data that is less than a cutoff
     # start with the first quartile and then iterate using the upper fence
-    UF = Q1
+    uf = q1
 
     # repeat
-    for iter in range(20):
-        Q1, Q2, Q3 = np.percentile(d[d<UF], [25,50,75])
-        logger.debug('Iteration {}. Quartiles of the trimmed data: {}, {}, {}'.format(iter, Q1 , Q2, Q3))
-        Q13 = Q3 - Q1
-        UFK = Q2 + 1.5*Q13
+    for it in range(20):
+        q1, q2, q3 = np.percentile(d[d < uf], [25, 50, 75])
+        logger.debug('Iteration {}. Quartiles of the trimmed data: {}, {}, {}'.format(it, q1, q2, q3))
+        q13 = q3 - q1
+        ufk = q2 + 1.5*q13
         # check for convergence
-        if abs(UFK-UF)/UF < tol:
-            UF = UFK
+        if abs(ufk-uf)/uf < tol or ufk < tol:
             break
         else:
-            UF = UFK
+            uf = ufk
     else:
         logger.warning('Warning, number of iterations exceeded')
 
     # recompute the quartiles
-    Q1, Q2, Q3 = np.percentile(d[d<UF], [25,50,75])
-    Q13 = Q3-Q1
-    # Q1, Q2, Q3 describes the noise
+    q1, q2, q3 = np.percentile(d[d < uf], [25, 50, 75])
+    q13 = q3 - q1
+    # q1, q2, q3 describes the noise
     # anything above this is a noise outlier above (possibly signal)
-    UF = Q2 + 1.5*Q13
-    # anything below LF is a signal outlier below (not useful)
-    LF = Q2 - 1.5*Q13
-    # but remember that the noise distribution is NOT symmetric, so UF is an underestimate
+    uf = q2 + 1.5*q13
+    # anything below lf is a signal outlier below (not useful)
+    lf = q2 - 1.5*q13
+    # but remember that the noise distribution is NOT symmetric, so uf is an underestimate
 
-    return LF, Q2, UF
+    return lf, q2, uf
 
 
-def signal_likelihood(data, noise=None):
+def signal_likelihood(data):
     """Return a likelihood that data is signal
 
     in SNR units, sigmoid with width 1, shifted to the right by 1
     ie P(<1)=0, P(2)=0.46, P(3)=0.76, P(4)=0.01, P(5)=0.96
     """
-
-    if not noise:
-        _, _, noise = noise_level(data)
+    _, _, uf = noise_stats(data)
 
     # The probability that each point has a signal
-    P = (data>noise) * (-1 + 2 / (1+np.exp(-(data-noise)/noise)))
+    p = (data > uf) * (-1 + 2 / (1+np.exp(-(data-uf)/uf)))
 
-    return P
+    return p
+
+
+def coil_correction(data, box_size=10):
+    """Weighted least squares estimate of the coil intensity correction
+
+    :param data: 3D or 4D array or list of 3D arrays
+    :param box_size: size over which to smooth
+    :return: 3D array coil correction
+    """
+    # <data*w>/<data**2*w>
+    # if we're given a list, copy into a 4D array
+    if isinstance(data, list):
+        nx, ny, nz = data[0].shape
+        nc = len(data)
+        h = np.zeros([nx, ny, nz, nc])
+        for n in range(nc):
+            h[:, :, :, n] = data[n]
+    else:
+        h = data
+
+    if len(h.shape) == 4:
+        nc = h.shape[3]
+        a = np.zeros(h.shape[0:3])
+        b = np.zeros(h.shape[0:3])
+        amp = np.sqrt(np.sum(h**2, 3))
+        w = signal_likelihood(amp)
+        for n in range(nc):
+            t = h[:, :, :, n]
+            a = a + uniform_filter(w * t, box_size)
+            b = b + uniform_filter(w * t**2, box_size)
+    else:
+        w = signal_likelihood(h)
+        a = uniform_filter(w * h, box_size)
+        b = uniform_filter(w * h**2, box_size)
+
+    _, sigma, _ = noise_stats(b)
+    c = a * b / (b * b + sigma ** 2)
+
+    # Scale
+    if len(h.shape) == 4:
+        nc = h.shape[3]
+        d = np.zeros(h.shape)
+        for n in range(nc):
+            d = c * h[:, :, :, n]
+    else:
+        d = c * h
+    scale = np.sum(d.flatten()) / np.sum(h.flatten())
+    c = scale * c
+
+    return c
+
+
+def textures(data, scales=5):
+    """Compute image textures at a particular scale or set of scales
+    gaussian smoothing, gradient magnitude, laplacian and standard deviation
+
+    :param data:  3D numpy array
+    :param scales: int or list of ints
+    :return: 4D numpy array
+    """
+    assert len(data.shape) == 3
+    nx, ny, nz = data.shape
+
+    if isinstance(scales, int):
+        scales = [scales]
+    ns = len(scales)
+
+    t = np.zeros([nx, ny, nz, 4*ns])
+    for s in range(ns):
+        t[:, :, :, 4*s+0] = gaussian_filter(data, sigma=scales[s])
+        t[:, :, :, 4*s+1] = gaussian_gradient_magnitude(data, sigma=scales[s])
+        t[:, :, :, 4*s+2] = gaussian_laplace(data, sigma=scales[s])
+        t[:, :, :, 4*s+3] = np.sqrt(gaussian_filter((data - t[:, :, :, 0])**2, sigma=scales[s]))
+
+    return t

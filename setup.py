@@ -11,7 +11,8 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'Click>=6.0',
-    # TODO: put package requirements here
+    'numpy>=1.10',
+    'scipy>=0.18'
 ]
 
 test_requirements = [
