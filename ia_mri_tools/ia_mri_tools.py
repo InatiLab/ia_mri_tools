@@ -69,7 +69,7 @@ def signal_likelihood(data):
     return p
 
 
-def coil_correction(data, box_size=10):
+def coil_correction(data, box_size=10, auto_scale=False):
     """Weighted least squares estimate of the coil intensity correction
 
     :param data: 3D or 4D array or list of 3D arrays
@@ -91,30 +91,29 @@ def coil_correction(data, box_size=10):
         nc = h.shape[3]
         a = np.zeros(h.shape[0:3])
         b = np.zeros(h.shape[0:3])
-        amp = np.sqrt(np.sum(h**2, 3))
-        w = signal_likelihood(amp)
         for n in range(nc):
             t = h[:, :, :, n]
-            a = a + uniform_filter(w * t, box_size)
-            b = b + uniform_filter(w * t**2, box_size)
+            a = a + uniform_filter(t, box_size, mode='constant')
+            b = b + uniform_filter(t**2, box_size, mode='constant')
     else:
-        w = signal_likelihood(h)
-        a = uniform_filter(w * h, box_size)
-        b = uniform_filter(w * h**2, box_size)
+        a = uniform_filter(h, box_size, mode='constant')
+        b = uniform_filter(h**2, box_size, mode='constant')
 
-    _, sigma, _ = noise_stats(b)
-    c = a * b / (b * b + sigma ** 2)
+    mask = signal_likelihood(a) > 0.8
+    c = np.zeros(a.shape)
+    c[mask] = a[mask] / b[mask]
 
-    # Scale
-    if len(h.shape) == 4:
-        nc = h.shape[3]
-        d = np.zeros(h.shape)
-        for n in range(nc):
-            d = c * h[:, :, :, n]
-    else:
-        d = c * h
-    scale = np.sum(d.flatten()) / np.sum(h.flatten())
-    c = scale * c
+    # Scale if desired
+    if auto_scale:
+        if len(h.shape) == 4:
+            nc = h.shape[3]
+            d = np.zeros(h.shape)
+            for n in range(nc):
+                d = c * h[:, :, :, n]
+        else:
+            d = c * h
+        scale = np.sum(d.flatten()) / np.sum(h.flatten())
+        c = scale * c
 
     return c
 
@@ -136,9 +135,9 @@ def textures(data, scales=5):
 
     t = np.zeros([nx, ny, nz, 4*ns])
     for s in range(ns):
-        t[:, :, :, 4*s+0] = gaussian_filter(data, sigma=scales[s])
-        t[:, :, :, 4*s+1] = gaussian_gradient_magnitude(data, sigma=scales[s])
-        t[:, :, :, 4*s+2] = gaussian_laplace(data, sigma=scales[s])
-        t[:, :, :, 4*s+3] = np.sqrt(gaussian_filter((data - t[:, :, :, 0])**2, sigma=scales[s]))
+        t[:, :, :, 4*s+0] = gaussian_filter(data, sigma=scales[s], mode='constant')
+        t[:, :, :, 4*s+1] = gaussian_gradient_magnitude(data, sigma=scales[s], mode='constant')
+        t[:, :, :, 4*s+2] = gaussian_laplace(data, sigma=scales[s], mode='constant')
+        t[:, :, :, 4*s+3] = np.sqrt(gaussian_filter((data - t[:, :, :, 0])**2, sigma=scales[s], mode='constant'))
 
     return t
