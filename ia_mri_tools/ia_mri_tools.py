@@ -85,7 +85,7 @@ def coil_correction(data, width=10):
     c = <data>/<data**2> is a solution to
     <data * c> = <1> in a weighted least squares sense
     """
-
+    
     # Find the signal statistics
     lf, q2, uf = noise_stats(data)
 
@@ -105,26 +105,42 @@ def coil_correction(data, width=10):
     return c
 
 
-def textures(data, scales=5):
+def textures(data, scales=5, basename=''):
     """Compute image textures at a particular scale or set of scales
     gaussian smoothing, gradient magnitude, laplacian and standard deviation
 
-    :param data:  3D numpy array
+    :param data:  2D or 3D numpy array
     :param scales: int or list of ints
-    :return: 4D numpy array
+    :param basename: str basename for feature labels
+    :return: 3D or 4D numpy float32 array, list of feature labels
     """
-    assert len(data.shape) == 3
-    nx, ny, nz = data.shape
 
     if isinstance(scales, int):
         scales = [scales]
+
     ns = len(scales)
+    out_shape = list(data.shape)
+    out_shape.append(4*ns+1)
+    t = np.zeros(out_shape, dtype=np.float32)
+    d = data.astype(np.float32)
 
-    t = np.zeros([nx, ny, nz, 4*ns])
+    # the first texture is the original data
+    t[..., 0] = d
+    names = [basename]
+
+    # loop over scales
     for s in range(ns):
-        t[:, :, :, 4*s+0] = gaussian_filter(data, sigma=scales[s], mode='constant')
-        t[:, :, :, 4*s+1] = gaussian_gradient_magnitude(data, sigma=scales[s], mode='constant')
-        t[:, :, :, 4*s+2] = gaussian_laplace(data, sigma=scales[s], mode='constant')
-        t[:, :, :, 4*s+3] = np.sqrt(gaussian_filter((data - t[:, :, :, 0])**2, sigma=scales[s], mode='constant'))
+        # mean
+        t[..., 4*s+1] = gaussian_filter(d, sigma=scales[s])
+        names.append('{}_mean_{}'.format(basename, s))
+        # gradient magnitude
+        t[..., 4*s+2] = gaussian_gradient_magnitude(d, sigma=scales[s])
+        names.append('{}_gradient_{}'.format(basename, s))
+        # laplacian
+        t[..., 4*s+3] = gaussian_laplace(d, sigma=scales[s])
+        names.append('{}_laplacian_{}'.format(basename, s))
+        # standard deviation
+        t[..., 4*s+4] = np.sqrt(gaussian_filter((d - t[..., 4*s+1])**2, sigma=scales[s]))
+        names.append('{}_deviation_{}'.format(basename, s))
 
-    return t
+    return t, names
