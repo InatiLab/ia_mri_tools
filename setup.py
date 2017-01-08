@@ -21,7 +21,7 @@ test_requirements = [
 
 setup(
     name='ia_mri_tools',
-    version='0.1.0',
+    version='0.1.1',
     description="Python tools for MRI data analysis.",
     long_description=readme + '\n\n' + history,
     author="Souheil James Inati",
@@ -31,7 +31,6 @@ setup(
         'ia_mri_tools',
     ],
     package_dir={'ia_mri_tools': 'ia_mri_tools'},
-    package_data={'ia_mri_tools': ['data/HCP/100307/*']},
     entry_points={
         'console_scripts': [
             'ia_mri_tools=ia_mri_tools.cli:main'
