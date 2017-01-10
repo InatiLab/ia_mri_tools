@@ -55,13 +55,14 @@ def noise_stats(data, tol=1e-2):
     return lf, q2, uf
 
 
-def signal_likelihood(data):
+def signal_likelihood(data, uf=None):
     """Return a likelihood that data is signal
 
     in SNR units, sigmoid with width 1, shifted to the right by 1
     ie P(<1)=0, P(2)=0.46, P(3)=0.76, P(4)=0.01, P(5)=0.96
     """
-    _, _, uf = noise_stats(data)
+    if not uf:
+        _, _, uf = noise_stats(data)
 
     # The probability that each point has a signal
     p = (data > uf) * (-1 + 2 / (1+np.exp(-(data-uf)/uf)))
@@ -69,75 +70,77 @@ def signal_likelihood(data):
     return p
 
 
-def coil_correction(data, box_size=10, auto_scale=False):
+def coil_correction(data, width=10):
     """Weighted least squares estimate of the coil intensity correction
 
-    :param data: 3D or 4D array or list of 3D arrays
-    :param box_size: size over which to smooth
-    :return: 3D array coil correction
+    :param data: 2D or 3D array
+    :param width: gaussian filter width
+    :param niter: number of iterations for the solver
+    :return: 2D or 3D array coil correction
+
+    data_corr = coil_correction(data)*data
+    scaled so that <w*data_corr> = <w*data> where w is the signal probability
+
+    The algorithm is based on the observation that
+    c = <data>/<data**2> is a solution to
+    <data * c> = <1> in a weighted least squares sense
     """
-    # <data*w>/<data**2*w>
-    # if we're given a list, copy into a 4D array
-    if isinstance(data, list):
-        nx, ny, nz = data[0].shape
-        nc = len(data)
-        h = np.zeros([nx, ny, nz, nc])
-        for n in range(nc):
-            h[:, :, :, n] = data[n]
-    else:
-        h = data
+    
+    # Find the signal statistics
+    lf, q2, uf = noise_stats(data)
 
-    if len(h.shape) == 4:
-        nc = h.shape[3]
-        a = np.zeros(h.shape[0:3])
-        b = np.zeros(h.shape[0:3])
-        for n in range(nc):
-            t = h[:, :, :, n]
-            a = a + uniform_filter(t, box_size, mode='constant')
-            b = b + uniform_filter(t**2, box_size, mode='constant')
-    else:
-        a = uniform_filter(h, box_size, mode='constant')
-        b = uniform_filter(h**2, box_size, mode='constant')
+    # Weights
+    w = data**2 / (data**2 + uf**2)
 
-    mask = signal_likelihood(a) > 0.8
-    c = np.zeros(a.shape)
-    c[mask] = a[mask] / b[mask]
+    # Smooth estimates of data and data**2
+    u1 = gaussian_filter(w*data, width)
+    u2 = gaussian_filter(w*data**2, width)
 
-    # Scale if desired
-    if auto_scale:
-        if len(h.shape) == 4:
-            nc = h.shape[3]
-            d = np.zeros(h.shape)
-            for n in range(nc):
-                d = c * h[:, :, :, n]
-        else:
-            d = c * h
-        scale = np.sum(d.flatten()) / np.sum(h.flatten())
-        c = scale * c
+    # Coil map (soft inverse)
+    c = u1 * u2 / (u2**2 + uf**4)
+
+    # Scale to match the weighted sum of the data
+    c = np.sum(w * c * data) / np.sum(w * data) * c
 
     return c
 
 
-def textures(data, scales=5):
+def textures(data, scales=5, basename=''):
     """Compute image textures at a particular scale or set of scales
     gaussian smoothing, gradient magnitude, laplacian and standard deviation
 
-    :param data:  3D numpy array
+    :param data:  2D or 3D numpy array
     :param scales: int or list of ints
-    :return: 4D numpy array
+    :param basename: str basename for feature labels
+    :return: 3D or 4D numpy float32 array, list of feature labels
     """
-    assert len(data.shape) == 3
-    nx, ny, nz = data.shape
 
     if isinstance(scales, int):
         scales = [scales]
+
     ns = len(scales)
+    out_shape = list(data.shape)
+    out_shape.append(4*ns+1)
+    t = np.zeros(out_shape, dtype=np.float32)
+    d = data.astype(np.float32)
 
-    t = np.zeros([nx, ny, nz, 4*ns])
+    # the first texture is the original data
+    t[..., 0] = d
+    names = [basename]
+
+    # loop over scales
     for s in range(ns):
-        t[:, :, :, 4*s+0] = gaussian_filter(data, sigma=scales[s], mode='constant')
-        t[:, :, :, 4*s+1] = gaussian_gradient_magnitude(data, sigma=scales[s], mode='constant')
-        t[:, :, :, 4*s+2] = gaussian_laplace(data, sigma=scales[s], mode='constant')
-        t[:, :, :, 4*s+3] = np.sqrt(gaussian_filter((data - t[:, :, :, 0])**2, sigma=scales[s], mode='constant'))
+        # mean
+        t[..., 4*s+1] = gaussian_filter(d, sigma=scales[s])
+        names.append('{}_mean_{}'.format(basename, s))
+        # gradient magnitude
+        t[..., 4*s+2] = gaussian_gradient_magnitude(d, sigma=scales[s])
+        names.append('{}_gradient_{}'.format(basename, s))
+        # laplacian
+        t[..., 4*s+3] = gaussian_laplace(d, sigma=scales[s])
+        names.append('{}_laplacian_{}'.format(basename, s))
+        # standard deviation
+        t[..., 4*s+4] = np.sqrt(gaussian_filter((d - t[..., 4*s+1])**2, sigma=scales[s]))
+        names.append('{}_deviation_{}'.format(basename, s))
 
-    return t
+    return t, names

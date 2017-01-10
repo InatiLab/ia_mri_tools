@@ -61,11 +61,14 @@ target/
 # pyenv python configuration file
 .python-version
 
+# Jupyter Notebook checkpoints
+notebooks/.ipynb_checkpoints
+
 # PyCharm IDE
 .idea/
 
 # Emacs temp files
 *~
 
-# Jupyter notebook checkpoints
-.ipynb_checkpoints
+# MacOS finder files
+.DS_Store
