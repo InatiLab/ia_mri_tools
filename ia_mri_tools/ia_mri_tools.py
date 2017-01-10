@@ -59,7 +59,7 @@ def signal_likelihood(data, uf=None):
     """Return a likelihood that data is signal
 
     in SNR units, sigmoid with width 1, shifted to the right by 1
-    ie P(<1)=0, P(2)=0.46, P(3)=0.76, P(4)=0.01, P(5)=0.96
+    ie P(<1)=0, P(2)=0.46, P(3)=0.76, P(4)=0.91, P(5)=0.96
     """
     if not uf:
         _, _, uf = noise_stats(data)
@@ -85,7 +85,7 @@ def coil_correction(data, width=10):
     c = <data>/<data**2> is a solution to
     <data * c> = <1> in a weighted least squares sense
     """
-    
+
     # Find the signal statistics
     lf, q2, uf = noise_stats(data)
 
