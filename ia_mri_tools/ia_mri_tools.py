@@ -100,7 +100,7 @@ def coil_correction(data, width=10):
     c = u1 * u2 / (u2**2 + uf**4)
 
     # Scale to match the weighted sum of the data
-    c = np.sum(w * c * data) / np.sum(w * data) * c
+    c = np.sum(w * data) / np.sum(w * c * data) * c
 
     return c
 
