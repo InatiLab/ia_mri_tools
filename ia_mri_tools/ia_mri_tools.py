@@ -105,13 +105,15 @@ def coil_correction(data, width=10):
     return c
 
 
-def textures(data, scales=5, basename=''):
+def textures(data, scales=5, basename='', whiten=True, mask=None):
     """Compute image textures at a particular scale or set of scales
     gaussian smoothing, gradient magnitude, laplacian and standard deviation
 
     :param data:  2D or 3D numpy array
     :param scales: int or list of ints
     :param basename: str basename for feature labels
+    :param whiten: bool mean center and variance normalize each feature
+    :param mask: 2D or 3D numpy array or None Mask for whitening
     :return: 3D or 4D numpy float32 array, list of feature labels
     """
 
@@ -143,4 +145,33 @@ def textures(data, scales=5, basename=''):
         t[..., 4*s+4] = np.sqrt(gaussian_filter((d - t[..., 4*s+1])**2, sigma=scales[s]))
         names.append('{}_deviation_{}'.format(basename, s))
 
+    if whiten:
+        for q in range(t.shape[-1]):
+            vol = t[..., q]
+            if mask is not None:
+                vol = vol[mask]
+            m = np.mean(vol.flatten())
+            s = 1.0/np.std(vol.flatten())
+            t[..., q] = s * (t[..., q] - m)
+
     return t, names
+
+
+def select(data, mask=None):
+
+    if isinstance(data, list):
+        h = []
+        for dsub in data:
+            h.append(select(dsub, mask))
+        return np.hstack(h)
+    else:
+        if mask is not None:
+            if len(data.shape) == 3:
+                return data.reshape(-1, 1)[mask.flatten(), :]
+            else:
+                return data.reshape(-1, data.shape[-1])[mask.flatten(), :]
+        else:
+            if len(data.shape) == 3:
+                return data.reshape(-1, 1)
+            else:
+                return data.reshape(-1, data.shape[-1])
