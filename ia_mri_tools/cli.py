@@ -1,15 +1,135 @@
 # -*- coding: utf-8 -*-
 
 import click
+import nibabel
+import numpy as np
+from ia_mri_tools.ia_mri_tools import coil_correction, signal_likelihood, textures
+
+
+def _check_image_compatibility(images):
+    im_shape = images[0].shape
+    im_affine = images[0].affine
+    for im in images[1:]:
+        assert (im.shape == im_shape), \
+            "Image shape mismatch: {} and {} differ.".format(im.get_filename(), images[0].get_filename())
+        assert np.all(im.affine == im_affine), \
+            "Image affine mismatch: {} and {} differ.".format(im.get_filename(), images[0].get_filename())
 
 
 @click.command()
-def main(args=None):
-    """Console script for ia_mri_tools"""
-    click.echo("Replace this message by putting your code into "
-               "ia_mri_tools.cli.main")
-    click.echo("See click documentation at http://click.pocoo.org/")
+@click.option('--threshold', type=click.FLOAT, default=0.7,
+              help='Signal likelihood threshold.')
+@click.option('--output', type=click.STRING, default='signal_mask.nii',
+              help='Output filename for the coil signal mask.')
+@click.argument('input_images', nargs=-1, type=click.STRING)
+def estimate_signal_mask(input_images, threshold, output):
+    """Estimate signal mask from one or more images."""
+
+    click.echo('Estimating signal mask...')
+
+    # open the images
+    images = [nibabel.load(x) for x in input_images]
+
+    # all other images must have matching orientation/dimensions/etc.
+    _check_image_compatibility(images)
+
+    # sum the input inputs
+    im_shape = images[0].shape
+    a = np.zeros(im_shape, dtype=np.float32)
+    for im in images:
+        a += im.get_data()
+
+    # compute the signal likelihood and threshold
+    mask = signal_likelihood(a) > threshold
+
+    # write out the result
+    im_affine = images[0].affine
+    out_image = nibabel.nifti2.Nifti2Image(mask.astype(np.float32), im_affine)
+    out_image.to_filename(output)
+
+    click.echo('Wrote signal mask to {}.'.format(output))
 
 
-if __name__ == "__main__":
-    main()
+@click.command()
+@click.option('--output', type=click.STRING, default='coil_correction.nii',
+              help='Output filename for the coil correction.')
+@click.option('--width', type=click.INT, default=10, help='Smoothing kernel width in pixels.')
+@click.option('--scale', type=click.FLOAT, default=1.0, help='Scale for the signal median value.')
+@click.argument('input_images', nargs=-1, type=click.STRING)
+def estimate_coil_correction(input_images, output, scale, width):
+    """Estimate receive coil intensity correction from one or more images."""
+
+    click.echo('Estimating receive coil intensity correction...')
+
+    # open the images
+    images = [nibabel.load(x) for x in input_images]
+
+    # all other images must have matching orientation/dimensions/etc.
+    _check_image_compatibility(images)
+
+    # sum the input inputs
+    im_shape = images[0].shape
+    a = np.zeros(im_shape, dtype=np.float32)
+    for im in images:
+        a += im.get_data()
+
+    # compute the coil correction and scale it
+    c = scale * coil_correction(a, width)
+
+    # write out the result
+    im_affine = images[0].affine
+    out_image = nibabel.nifti2.Nifti2Image(c, im_affine)
+    out_image.to_filename(output)
+
+    click.echo('Wrote receive coil intensity correction to {}.'.format(output))
+
+
+@click.command()
+@click.option('--correction', type=click.STRING, default='coil_correction.nii',
+              help='Filename for the coil correction image.')
+@click.option('--output', type=click.STRING, default='out.nii',
+              help='Output filename for the corrected image.')
+@click.argument('input_image', type=click.STRING)
+def apply_coil_correction(input_image, correction, output):
+    """Apply receive coil intensity correction."""
+
+    click.echo('Applying coil intensity correction from {} to {}.'.format(correction, input_image))
+
+    # open the images
+    im = nibabel.load(input_image)
+    corr = nibabel.load(correction)
+
+    # images must have matching orientation/dimensions/etc.
+    _check_image_compatibility([im, corr])
+
+    # compute the coil correction and scale it
+    out = im.get_data() * corr.get_data()
+
+    # write out the result
+    out_image = nibabel.nifti2.Nifti2Image(out, im.affine)
+    out_image.to_filename(output)
+
+    click.echo('Wrote coil intensity corrected image to {}.'.format(output))
+
+
+@click.command()
+@click.option('--output', type=click.STRING, default='out.nii',
+              help='Output filename for the textures image.')
+@click.argument('input_image', type=click.STRING)
+@click.argument('scales', nargs=-1, type=click.INT)
+def estimate_textures(input_image, scales, output):
+    """Estimate 3D multiscale textures."""
+
+    click.echo('Estimate 3D multiscale textures for {}.'.format(input_image))
+
+    # open the images
+    im = nibabel.load(input_image)
+
+    # compute the textures
+    out, _ = textures(im.get_data(), scales)
+
+    # write out the result
+    out_image = nibabel.nifti2.Nifti2Image(out, im.affine)
+    out_image.to_filename(output)
+
+    click.echo('Wrote 3D multiscale textures to {}.'.format(output))
