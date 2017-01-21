@@ -11,6 +11,7 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'Click>=6.0',
+    'nibabel>=2.1',
     'numpy>=1.10',
     'scipy>=0.18'
 ]
@@ -21,7 +22,7 @@ test_requirements = [
 
 setup(
     name='ia_mri_tools',
-    version='0.1.1',
+    version='0.2.0',
     description="Python tools for MRI data analysis.",
     long_description=readme + '\n\n' + history,
     author="Souheil James Inati",
@@ -33,7 +34,10 @@ setup(
     package_dir={'ia_mri_tools': 'ia_mri_tools'},
     entry_points={
         'console_scripts': [
-            'ia_mri_tools=ia_mri_tools.cli:main'
+            'ia_estimate_signal_mask=ia_mri_tools.cli:estimate_signal_mask',
+            'ia_estimate_coil_correction=ia_mri_tools.cli:estimate_coil_correction',
+            'ia_apply_coil_correction=ia_mri_tools.cli:apply_coil_correction',
+            'ia_estimate_textures=ia_mri_tools.cli:estimate_textures',
         ]
     },
     include_package_data=True,
