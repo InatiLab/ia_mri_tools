@@ -54,7 +54,7 @@ def estimate_signal_mask(input_images, threshold, output):
 @click.option('--output', type=click.STRING, default='coil_correction.nii',
               help='Output filename for the coil correction.')
 @click.option('--width', type=click.INT, default=10, help='Smoothing kernel width in pixels.')
-@click.option('--scale', type=click.FLOAT, default=1.0, help='Scale for the signal median value.')
+@click.option('--scale', type=click.FLOAT, default=100.0, help='Scale for the signal value.')
 @click.argument('input_images', nargs=-1, type=click.STRING)
 def estimate_coil_correction(input_images, output, scale, width):
     """Estimate receive coil intensity correction from one or more images."""
@@ -74,7 +74,7 @@ def estimate_coil_correction(input_images, output, scale, width):
         a += im.get_data()
 
     # compute the coil correction and scale it
-    c = scale * coil_correction(a, width)
+    c = coil_correction(a, width, scale)
 
     # write out the result
     im_affine = images[0].affine
