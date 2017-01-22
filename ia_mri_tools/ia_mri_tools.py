@@ -70,20 +70,21 @@ def signal_likelihood(data, uf=None):
     return p
 
 
-def coil_correction(data, width=10):
+def coil_correction(data, width=10, scale=100):
     """Weighted least squares estimate of the coil intensity correction
 
     :param data: 2D or 3D array
     :param width: gaussian filter width
-    :param niter: number of iterations for the solver
+    :param scale:
     :return: 2D or 3D array coil correction
 
     data_corr = coil_correction(data)*data
-    scaled so that <w*data_corr> = <w*data> where w is the signal probability
 
     The algorithm is based on the observation that
     c = <data>/<data**2> is a solution to
     <data * c> = <1> in a weighted least squares sense
+
+    The scale factor multiplies the above, so <data * c> = s*<1>
     """
 
     # Find the signal statistics
@@ -99,8 +100,8 @@ def coil_correction(data, width=10):
     # Coil map (soft inverse)
     c = u1 * u2 / (u2**2 + uf**4)
 
-    # Scale to match the weighted sum of the data
-    c = np.sum(w * data) / np.sum(w * c * data) * c
+    # and scale
+    c *= scale
 
     return c
 
