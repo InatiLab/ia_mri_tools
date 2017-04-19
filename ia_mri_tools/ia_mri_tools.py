@@ -30,7 +30,7 @@ def noise_stats(data, tol=1e-2):
 
     # repeat
     for it in range(20):
-        q1, q2, q3 = np.percentile(d[d < uf], [25, 50, 75])
+        q1, q2, q3 = np.percentile(d[d <= uf], [25, 50, 75])
         logger.debug('Iteration {}. Quartiles of the trimmed data: {}, {}, {}'.format(it, q1, q2, q3))
         q13 = q3 - q1
         ufk = q2 + 1.5*q13
@@ -43,7 +43,7 @@ def noise_stats(data, tol=1e-2):
         logger.warning('Warning, number of iterations exceeded')
 
     # recompute the quartiles
-    q1, q2, q3 = np.percentile(d[d < uf], [25, 50, 75])
+    q1, q2, q3 = np.percentile(d[d <= uf], [25, 50, 75])
     q13 = q3 - q1
     # q1, q2, q3 describes the noise
     # anything above this is a noise outlier above (possibly signal)
