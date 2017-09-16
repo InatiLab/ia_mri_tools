@@ -44,6 +44,7 @@ def estimate_signal_mask(input_images, threshold, output):
 
     # write out the result in the same format and preserve the header
     out_image = type(images[0])(mask.astype(np.float32), affine=None, header=images[0].header)
+
     out_image.to_filename(output)
 
     click.echo('Wrote signal mask to {}.'.format(output))
