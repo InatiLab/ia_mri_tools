@@ -9,5 +9,5 @@ Development Lead
 
 Contributors
 ------------
+Sara Inati <sarakinati@gmail.com>
 
-None yet. Why not be the first?
