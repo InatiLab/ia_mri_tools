@@ -3,7 +3,9 @@
 import click
 import nibabel
 import numpy as np
-from ia_mri_tools.ia_mri_tools import coil_correction, signal_likelihood, textures
+from ia_mri_tools.signal_stats import signal_likelihood
+from ia_mri_tools.coil_correction import coil_correction, coil_correction_glasser
+from ia_mri_tools.features import textures
 
 
 def _check_image_compatibility(images):
@@ -48,6 +50,34 @@ def estimate_signal_mask(input_images, threshold, output):
     out_image.to_filename(output)
 
     click.echo('Wrote signal mask to {}.'.format(output))
+
+
+@click.command()
+@click.option('--output', type=click.STRING, default='coil_correction.nii',
+              help='Output filename for the coil correction.')
+@click.option('--width', type=click.INT, default=10, help='Smoothing kernel width in pixels.')
+@click.argument('t1_image', type=click.STRING)
+@click.argument('t2_image', type=click.STRING)
+def estimate_coil_correction_glasser(t1_image, t2_image, output, width):
+    """Estimate receive coil intensity correction from a pair of T1w and T2w images."""
+
+    click.echo('Estimating receive coil intensity correction from {} and {}'.format(t1_image, t2_image))
+    click.echo('  width: {}'.format(width))
+
+    # open the images
+    t1 = nibabel.load(t1_image)
+    t1_data = t1.get_data().astype(np.float32)
+    t2 = nibabel.load(t2_image)
+    t2_data = t2.get_data().astype(np.float32)
+
+    # compute the coil correction
+    c = coil_correction_glasser(t1_data, t2_data, width)
+
+    # write out the result in the same format and preserve the header
+    out_image = type(t1)(c, affine=None, header=t1.header)
+    out_image.to_filename(output)
+
+    click.echo('Wrote receive coil intensity correction to {}.'.format(output))
 
 
 @click.command()
