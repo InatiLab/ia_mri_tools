@@ -164,16 +164,19 @@ def normalize_local_2d(data, filter_width=FILTER_WIDTH):
             output[:, :, n] = output[:, :, n] - gaussian_filter(output[:, :, n], filter_width)
         # Compute the standard deviation locally across features and average
         stddev = np.sqrt(gaussian_filter(np.sum(output**2, axis=2), filter_width))
+        # Estimate signal floor
+        _, _, uf = noise_stats(stddev)
+        # Robust division
+        for n in range(data.shape[2]):
+            output[:, :, n] = output[:, :, n] * stddev / (stddev**2 + uf**2)
     else:
         output = output - gaussian_filter(output, filter_width)
         # Compute the standard deviation locally
         stddev = np.sqrt(gaussian_filter(output**2, filter_width))
-
-    # Estimate signal floor
-    _, _, uf = noise_stats(stddev)
-
-    # Robust division
-    output = output * stddev / (stddev**2 + uf**2)
+        # Estimate signal floor
+        _, _, uf = noise_stats(stddev)
+        # Robust division
+        output = output * stddev / (stddev**2 + uf**2)
 
     return output
 
@@ -199,15 +202,18 @@ def normalize_local_3d(data, filter_width=FILTER_WIDTH):
             output[:, :, :, n] = output[:, :, :, n] - gaussian_filter(output[:, :, :, n], filter_width)
         # Compute the standard deviation locally across features and average
         stddev = np.sqrt(gaussian_filter(np.sum(output**2, axis=3), filter_width))
+        # Estimate signal floor
+        _, _, uf = noise_stats(stddev)
+        # Robust division
+        for n in range(data.shape[3]):
+            output[:, :, :, n] = output[:, :, :, n]  * stddev / (stddev ** 2 + uf ** 2)
     else:
         output = output - gaussian_filter(output, filter_width)
         # Compute the standard deviation locally
         stddev = np.sqrt(gaussian_filter(output**2, filter_width))
-
-    # Estimate signal floor
-    _, _, uf = noise_stats(stddev)
-
-    # Robust division
-    output = output * stddev / (stddev**2 + uf**2)
+        # Estimate signal floor
+        _, _, uf = noise_stats(stddev)
+        # Robust division
+        output = output * stddev / (stddev**2 + uf**2)
 
     return output
