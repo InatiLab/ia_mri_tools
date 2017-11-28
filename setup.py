@@ -39,6 +39,7 @@ setup(
             'ia_estimate_coil_correction_glasser=ia_mri_tools.cli:estimate_coil_correction_glasser',
             'ia_apply_coil_correction=ia_mri_tools.cli:apply_coil_correction',
             'ia_estimate_textures=ia_mri_tools.cli:estimate_textures',
+            'ia_normalize_local=ia_mri_tools.cli:normalize_local',
         ]
     },
     include_package_data=True,
