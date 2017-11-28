@@ -160,7 +160,7 @@ def normalize_local_2d(data, filter_width=FILTER_WIDTH):
     # Remove the local mean
     # The 3rd dimension is the number of features
     if data.ndim == 3:
-        for n in data.shape[2]:
+        for n in range(data.shape[2]):
             output[:, :, n] = output[:, :, n] - gaussian_filter(output[:, :, n], filter_width)
         # Compute the standard deviation locally across features and average
         stddev = np.sqrt(gaussian_filter(np.sum(output**2, axis=2), filter_width))
@@ -168,7 +168,6 @@ def normalize_local_2d(data, filter_width=FILTER_WIDTH):
         output = output - gaussian_filter(output, filter_width)
         # Compute the standard deviation locally
         stddev = np.sqrt(gaussian_filter(output**2, filter_width))
-
 
     # Estimate signal floor
     _, _, uf = noise_stats(stddev)
@@ -196,7 +195,7 @@ def normalize_local_3d(data, filter_width=FILTER_WIDTH):
     # Remove the local mean
     # The 4th dimension is the number of features
     if data.ndim == 4:
-        for n in data.shape[3]:
+        for n in range(data.shape[3]):
             output[:, :, :, n] = output[:, :, :, n] - gaussian_filter(output[:, :, :, n], filter_width)
         # Compute the standard deviation locally across features and average
         stddev = np.sqrt(gaussian_filter(np.sum(output**2, axis=3), filter_width))
