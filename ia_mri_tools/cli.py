@@ -183,7 +183,7 @@ def normalize_local(input_image, width, output):
     out = normalize_local_3d(im.get_data(), width)
 
     # write out the result and preserve the header
-    out_image = type(out)(out, affine=None, header=im.header)
+    out_image = type(im)(out, affine=None, header=im.header)
     out_image.to_filename(output)
 
     click.echo('Wrote 3D multiscale textures to {}.'.format(output))
