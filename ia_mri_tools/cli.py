@@ -3,7 +3,7 @@
 import click
 import nibabel
 import numpy as np
-from ia_mri_tools.signal_stats import signal_likelihood
+from ia_mri_tools.signal_stats import signal_likelihood, normalize_local_3d
 from ia_mri_tools.coil_correction import coil_correction, coil_correction_glasser
 from ia_mri_tools.features import textures
 
@@ -160,6 +160,29 @@ def estimate_textures(input_image, scales, output):
     out, _ = textures(im.get_data(), scales)
 
     # write out the result in the same format and preserve the header
+    out_image = type(im)(out, affine=None, header=im.header)
+    out_image.to_filename(output)
+
+    click.echo('Wrote 3D multiscale textures to {}.'.format(output))
+
+
+@click.command()
+@click.option('--output', type=click.STRING, default='out.nii',
+              help='Output filename for the normalized image.')
+@click.argument('input_image', type=click.STRING)
+@click.option('--width', type=click.INT, default=20, help='Smoothing kernel width in pixels.')
+def normalize_local(input_image, width, output):
+    """Local contrast normalization"""
+
+    click.echo('Computing local contrast normalization for {}.'.format(input_image))
+
+    # open the images
+    im = nibabel.load(input_image)
+
+    # normalize
+    out = normalize_local_3d(im.get_data(), width)
+
+    # write out the result and preserve the header
     out_image = type(im)(out, affine=None, header=im.header)
     out_image.to_filename(output)
 
