@@ -2,15 +2,73 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, gaussian_gradient_magnitude, gaussian_laplace
 
 
-def textures(data, scales=5, basename='', whiten=True, mask=None):
+def mean(data, scale):
+    """Compute image mean at a particular scale
+
+    gaussian smoothing
+
+    :param data:  2D or 3D numpy array
+    :param scale: int
+    :return: 2D or 3D numpy float32 array
+    """
+    d = data.astype(np.float32)
+    m = gaussian_filter(d, sigma=scale)
+
+    return m
+
+
+def stddev(data, scale):
+    """Compute image standard deviation at a particular scale
+
+    gaussian smoothing
+
+    :param data:  2D or 3D numpy array
+    :param scale: int
+    :return: 2D or 3D numpy float32 array
+    """
+    d = data.astype(np.float32)
+    s = np.sqrt(gaussian_filter((d-mean(d, scale))**2, sigma=scale))
+
+    return s
+
+
+def grad(data, scale):
+    """Compute image gradient magnitude at a particular scale
+
+    gaussian smoothing
+
+    :param data:  2D or 3D numpy array
+    :param scale: int
+    :return: 2D or 3D numpy float32 array
+    """
+    d = data.astype(np.float32)
+    g = gaussian_gradient_magnitude(d, sigma=scale)
+
+    return g
+
+
+def laplace(data, scale):
+    """Compute image laplacian at a particular scale
+
+    gaussian smoothing
+
+    :param data:  2D or 3D numpy array
+    :param scale: int
+    :return: 2D or 3D numpy float32 array
+    """
+    d = data.astype(np.float32)
+    g = gaussian_laplace(d, sigma=scale)
+
+    return g
+
+
+def textures(data, scales=5, basename=''):
     """Compute image textures at a particular scale or set of scales
-    gaussian smoothing, gradient magnitude, laplacian and standard deviation
+    gaussian smoothing, gradient magnitude, and standard deviation
 
     :param data:  2D or 3D numpy array
     :param scales: int or list of ints
     :param basename: str basename for feature labels
-    :param whiten: bool mean center and variance normalize each feature
-    :param mask: 2D or 3D numpy array or None Mask for whitening
     :return: 3D or 4D numpy float32 array, list of feature labels
     """
 
@@ -19,7 +77,7 @@ def textures(data, scales=5, basename='', whiten=True, mask=None):
 
     ns = len(scales)
     out_shape = list(data.shape)
-    out_shape.append(4*ns+1)
+    out_shape.append(3*ns+1)
     t = np.zeros(out_shape, dtype=np.float32)
     d = data.astype(np.float32)
 
@@ -30,26 +88,14 @@ def textures(data, scales=5, basename='', whiten=True, mask=None):
     # loop over scales
     for s in range(ns):
         # mean
-        t[..., 4*s+1] = gaussian_filter(d, sigma=scales[s])
-        names.append('{}_mean_{}'.format(basename, s))
+        t[..., 3*s+1] = mean(d, scales[s])
+        names.append('{}_mean_{}'.format(basename, scales[s]))
         # gradient magnitude
-        t[..., 4*s+2] = gaussian_gradient_magnitude(d, sigma=scales[s])
-        names.append('{}_gradient_{}'.format(basename, s))
-        # laplacian
-        t[..., 4*s+3] = gaussian_laplace(d, sigma=scales[s])
-        names.append('{}_laplacian_{}'.format(basename, s))
+        t[..., 3*s+2] = grad(d, scales[s])
+        names.append('{}_grad_{}'.format(basename, scales[s]))
         # standard deviation
-        t[..., 4*s+4] = np.sqrt(gaussian_filter((d - t[..., 4*s+1])**2, sigma=scales[s]))
-        names.append('{}_deviation_{}'.format(basename, s))
-
-    if whiten:
-        for q in range(t.shape[-1]):
-            vol = t[..., q]
-            if mask is not None:
-                vol = vol[mask]
-            m = np.mean(vol.flatten())
-            s = 1.0/np.std(vol.flatten())
-            t[..., q] = s * (t[..., q] - m)
+        t[..., 3*s+3] = stddev(data, scales[s])
+        names.append('{}_stddev_{}'.format(basename, scales[s]))
 
     return t, names
 
