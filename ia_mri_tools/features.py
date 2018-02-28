@@ -77,7 +77,7 @@ def textures(data, scales=5, basename=''):
 
     ns = len(scales)
     out_shape = list(data.shape)
-    out_shape.append(3*ns+1)
+    out_shape.append(4*ns+1)
     t = np.zeros(out_shape, dtype=np.float32)
     d = data.astype(np.float32)
 
@@ -88,13 +88,16 @@ def textures(data, scales=5, basename=''):
     # loop over scales
     for s in range(ns):
         # mean
-        t[..., 3*s+1] = mean(d, scales[s])
+        t[..., 4*s+1] = mean(d, scales[s])
         names.append('{}_mean_{}'.format(basename, scales[s]))
         # gradient magnitude
-        t[..., 3*s+2] = grad(d, scales[s])
+        t[..., 4*s+2] = grad(d, scales[s])
         names.append('{}_grad_{}'.format(basename, scales[s]))
+        # laplacian
+        t[..., 4*s+3] = laplace(d, scales[s])
+        names.append('{}_lap_{}'.format(basename, scales[s]))
         # standard deviation
-        t[..., 3*s+3] = stddev(data, scales[s])
+        t[..., 4*s+4] = stddev(data, scales[s])
         names.append('{}_stddev_{}'.format(basename, scales[s]))
 
     return t, names
