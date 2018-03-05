@@ -4,7 +4,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def im_show(h, n, m, i, title=None, colorbar=True, pmin=2, pmax=98):
+def im_show(h, n, m, i, title=None, colorbar=True, vmin=-100, vmax=100):
+    plt.subplot(n, m, i)
+    plt.imshow(h[:, ::-1].transpose(), cmap='gray', vmin=vmin, vmax=vmax)
+    plt.axis('off')
+    if title:
+        plt.title(title)
+    if colorbar:
+        plt.colorbar()
+
+
+def im_show_scale(h, n, m, i, title=None, colorbar=True, pmin=2, pmax=98):
     plt.subplot(n, m, i)
     plt.imshow(h[:, ::-1].transpose(), cmap='gray', vmin=np.percentile(h, pmin), vmax=np.percentile(h, pmax))
     plt.axis('off')
@@ -31,7 +41,7 @@ def hist_show(d, n, m, i, min_val=None, max_val=None, bins=50, title=None):
 def load_data(dset, z=None, data_path='data/HCP/100307'):
     """
 
-    :param dset: string 'T1', 'T2', 'T1r', or 'T2r'
+    :param dset: string 'T1', 'T2', 'T1r', 'T2r', or 'aparc+aseg'
     :param z: integer slice number
     :param data_path: path to the data
     :return: data as a numpy array
@@ -45,6 +55,8 @@ def load_data(dset, z=None, data_path='data/HCP/100307'):
         dset_path = os.path.join(data_path, 'T1w_acpc_dc_restore.nii.gz')
     elif dset == 'T2r':
         dset_path = os.path.join(data_path, 'T2w_acpc_dc_restore.nii.gz')
+    elif dset == 'aparc+aseg':
+        dset_path = os.path.join(data_path, 'aparc+aseg.nii.gz')
     else:
         raise NameError('Unknown data set name.')
 
