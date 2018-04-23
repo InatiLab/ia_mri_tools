@@ -3,7 +3,7 @@ from math import floor, ceil
 import numpy as np
 from numpy.fft import fftn, ifftn, fftshift, ifftshift
 
-from .filters import radial, gradient
+from .filters import radial, gradient, hessian
 
 # Default number of pyramid levels
 NLEVELS = 4
@@ -17,19 +17,30 @@ NLEVELS = 4
 def gaussian_pyramid(data, nlevels=NLEVELS):
     return [radial(data, 'gaussian', level) for level in range(nlevels)]
 
+
 # Difference of Gaussians Pyramid
 def dog_pyramid(data, nlevels=NLEVELS):
     return [radial(data, 'dog', level) for level in range(nlevels)]
 
+
 # Laplacian Pyramid
 def laplacian_pyramid(data, nlevels=NLEVELS):
     return [radial(data, 'laplacian', level) for level in range(nlevels)]
+
 
 # Gradient Pyramid
 def gradient_pyramid(data, nlevels=NLEVELS):
     output = []
     for level in range(nlevels):
         output.append(gradient(data, level))
+    return output
+
+
+# Hessian Pyramid
+def hessian_pyramid(data, nlevels=NLEVELS):
+    output = []
+    for level in range(nlevels):
+        output.append(hessian(data, level))
     return output
 
 

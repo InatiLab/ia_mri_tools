@@ -147,8 +147,9 @@ def apply_coil_correction(input_image, correction, output):
 @click.option('--output', type=click.STRING, default='out.nii',
               help='Output filename for the textures image.')
 @click.argument('input_image', type=click.STRING)
-@click.argument('nlevels', type=click.INT, default=4)
-def estimate_textures(input_image, nlevels, output):
+@click.argument('nscales', type=click.INT, default=4)
+@click.argument('norm_scale', type=click.INT, default=4)
+def estimate_textures(input_image, nscales, norm_scale, output):
     """Estimate 3D multiscale textures."""
 
     click.echo('Estimate 3D multiscale textures for {}.'.format(input_image))
@@ -157,7 +158,7 @@ def estimate_textures(input_image, nlevels, output):
     im = nibabel.load(input_image)
 
     # compute the textures
-    t, names = textures(im.get_data(), nlevels)
+    t, names = textures(im.get_data(), nscales=nscales, norm_scale=norm_scale)
     nfeats = len(t)
     out = np.zeros([*t[0].shape, nfeats], t[0].dtype)
     for f in range(nfeats):
