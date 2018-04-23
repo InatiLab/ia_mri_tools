@@ -32,10 +32,10 @@ def scale_coordinates(shape, scale):
         return x, y, z
 
     else:
-        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(data.ndim))
+        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(len(shape)))
 
 
-def radial(data, func, scale=1, truncate=True):
+def radial(data, func, scale=1, truncate=False):
     """
     Rotationally symmetric filter in the fourier domain with truncation
     """
@@ -84,7 +84,7 @@ def radial(data, func, scale=1, truncate=True):
         return output
 
 
-def gradient(data, scale=1, truncate=True):
+def gradient(data, scale=1, truncate=False):
     """
     Gradient filter in the fourier domain with truncation
     """
@@ -129,3 +129,57 @@ def gradient(data, scale=1, truncate=True):
         return [gx, gy, gz]
     else:
         raise RuntimeError('Unsupported number of dimensions {}.'.format(data.ndim))
+
+
+def hessian(data, scale=1, truncate=False):
+    """                                                                                                                                                              
+    Hessian, 2nd order partial derivatives filter in the fourier domain with truncation                                                                                                            
+    """
+
+    # Get the scaled coordinate system, [-pi,pi]^d
+    if data.ndim == 2:
+        x, y = scale_coordinates(data.shape, scale)
+        rsq = np.sqrt(x*x + y*y)
+    elif data.ndim == 3:
+        x, y, z = scale_coordinates(data.shape, scale)
+        rsq = np.sqrt(x*x + y*y + z*z)
+    else:
+        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(data.ndim))
+
+    # Build the filter in the fourier domain
+
+    # 1) Gaussian
+    g = np.exp(-0.5*rsq)
+
+    # 2) Truncate on a sphere of r=pi
+    if truncate:
+        g[rsq > math.pi**2] = 0.0
+
+    # 3) Gradient in each direction
+    # (i*x)*(i*y)*g, etc
+    temp = -1.0 * g * fftshift(fftn(data))
+    dxx = ifftn(ifftshift(x*x*temp))
+    dxy = ifftn(ifftshift(x*y*temp))
+    dyy = ifftn(ifftshift(y*y*temp))
+    if data.ndim == 3:
+        dxz = ifftn(ifftshift(x*z*temp))
+        dyz = ifftn(ifftshift(y*z*temp))
+        dzz = ifftn(ifftshift(z*z*temp))
+
+    # Ensure that real functions stay real                                                                                                                           
+    if np.isrealobj(data):
+        dxx = np.real(dxx)
+        dxy = np.real(dxy)
+        dyy = np.real(dyy)
+        if data.ndim == 3:
+            dxz = np.real(dxz)
+            dyz = np.real(dyz)
+            dzz = np.real(dzz)
+
+    if data.ndim == 2:
+        return [dxx, dxy, dyy]
+    elif data.ndim == 3:
+        return [dxx, dxy, dxz, dyy, dyz, dzz]
+    else:
+        raise RuntimeError('Unsupported number of dimensions {}.'.format(data.ndim))
+
