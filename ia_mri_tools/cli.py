@@ -4,7 +4,7 @@ import click
 import nibabel
 import numpy as np
 from ia_mri_tools.signal_stats import signal_likelihood
-from ia_mri_tools.features import input_normalization
+from ia_mri_tools.features import input_normalization, riff
 
 
 def _check_image_compatibility(images):
