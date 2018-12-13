@@ -1,5 +1,5 @@
 # Utility functions
-
+import numpy as np
 
 def select(data, mask=None):
 

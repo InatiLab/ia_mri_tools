@@ -35,6 +35,20 @@ def scale_coordinates(shape, scale):
         raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(len(shape)))
 
 
+def _pinv(x, p=2):
+    """
+    Pseudoinverse with regularization
+
+    Use the lowest p percent of the signal as an estimate of the noise floor
+    """
+    d = np.abs(x)
+    # find the lowest p% of the non-zero signal
+    # to use for regularization
+    s = np.percentile(d[d>0], [p])
+    ix = x / (d**2 + s**2)
+    return ix
+
+
 def radial(data, func, scale=1, truncate=False):
     """
     Rotationally symmetric filter in the fourier domain with truncation
@@ -82,6 +96,15 @@ def radial(data, func, scale=1, truncate=False):
         return np.real(output)
     else:
         return output
+
+
+def high_pass(data, scale=0):
+    """
+    High pass filter
+    """
+    hp = data - radial(data, 'gaussian', scale=scale)
+
+    return hp
 
 
 def gradient(data, scale=1, truncate=False):
@@ -183,3 +206,75 @@ def hessian(data, scale=1, truncate=False):
     else:
         raise RuntimeError('Unsupported number of dimensions {}.'.format(data.ndim))
 
+
+def hessian_power(h):
+    """
+    Power a the hessian filter band
+    Frobenius norm squared
+    """
+    if len(h) == 2:
+        p = np.abs(h[0])**2 + 2*np.abs(h[1])**2 + np.abs(h[2])**2
+    elif len(h) == 6:
+        p = np.abs(h[0])**2 + 2*np.abs(h[1])**2 + 2*np.abs(h[2])**2 + np.abs(h[3])**2 + 2*np.abs(h[4])**2 + np.abs(h[5])**2
+    else:
+        raise RuntimeError('Unsupported number of dimensions {}.'.format(len(h)))
+    return p
+
+
+def gradient_rot(g):
+    """
+    Rotational invariant of the gradient
+    """
+    if len(g) == 2:
+        # [dx, dy]    
+        g = np.sqrt(np.abs(g[0])**2 + np.abs(g[1])**2)
+
+    elif len(g) == 3:
+        # [dx, dy, dz]    
+        g = np.sqrt(np.abs(g[0])**2 + np.abs(g[1])**2 + np.abs(g[2]))
+
+    else:
+        raise RuntimeError('Unsupported number of dimensions {}.'.format(len(g)))
+
+    return g
+
+def hessian_rot(h):
+    """
+    Rotational invariants of the hessian
+    """
+
+    if len(h) == 3:
+        # [dxx, dxy, dyy]
+        # 1st trace l1 + l2
+        trace = h[0] + h[2]
+        # 2nd determinant l1*l2
+        # det = Dxx*Dyy - Dxy*Dyx
+        det = h[0]*h[2] - h[1]*h[1]
+        # frobenius norm sqrt(l1**2 + l2**2)
+        frobenius = np.sqrt(np.abs(h[0])**2 + 2*np.abs(h[1])**2 + np.abs(h[2])**2)
+        # normalize the determinant by the frobenius norm for scaling
+        det = det * _pinv(frobenius)
+
+        return (trace, det, frobenius)
+
+    elif len(h) == 6:
+        # [dxx, dxy, dxz, dyy, dyz, dzz]
+        # 1st trace l1 + l2 + l3
+        trace = h[0] + h[3] + h[5]
+        # 2nd l1*l2 + l1*l3 + l2*l3
+        # sec = Dxx*Dyy - Dxy*Dyx + Dxx*Dzz - Dxz*Dzx + Dyy*Dzz - Dyz*Dzy
+        sec = h[0]*h[3] - h[1]*h[1] + h[0]*h[5] - h[2]*h[2] + h[3]*h[5] - h[4]*h[4]
+        # 3rd determinant l1*l2*l3
+        # det = Dxx*(Dyy*Dzz - Dyz*Dzy) - Dxy*(Dyx*Dzz - Dyz*Dzx) + Dxz*(Dyx*Dzy - Dyy*Dzx)
+        det = h[0]*(h[3]*h[5]-h[4]*h[4]) - h[1]*(h[1]*h[5]-h[4]*h[2]) + h[2]*(h[1]*h[4]-h[3]*h[2])
+        # frobenius norm sqrt(l1**2 + l2**2 + l3**2)
+        frobenius = np.sqrt(np.abs(h[0])**2 + 2*np.abs(h[1])**2 + 2*np.abs(h[2])**2 + np.abs(h[3])**2 + 2*np.abs(h[4])**2) + np.abs(h[5])**2
+
+        # normalize the second and third rotational invariants by the frobenius norm for scaling
+        sec = sec * _pinv(frobenius)
+        det = det * _pinv(frobenius**(3/2))
+
+        return (trace, sec, det, frobenius)
+
+    else:
+        raise RuntimeError('Unsupported number of dimensions {}.'.format(len(h)))

@@ -1,18 +1,15 @@
 import numpy as np
-from .signal_stats import noise_stats
-from .filters import radial, gradient, hessian
-
-NSCALES = 4
-NORM_SCALE = 4
+from .filters import _pinv, radial, high_pass, gradient, hessian, gradient_rot, hessian_rot
 
 
-def _pinv(x, lam=3):
-    """
-    Pseudoinverse with regularization
-    """
-    _, q, _ = noise_stats(np.abs(x))
-    ix = x / (np.abs(x)**2 + lam**2*q**2)
-    return ix
+# Scales for first stage local gain control
+# and output gain control
+HIGH_PASS_SCALE = 4
+NORMALIZATION_SCALE = 5
+
+# Number of spatial scales for rotationally invariant features
+NUM_SCALES = 3
+
 
 def _get_dim(data):
     """
@@ -29,109 +26,39 @@ def _get_dim(data):
     return ndim
 
 
-def high_pass(data, norm=True, norm_scale=NORM_SCALE):
+def compute_local_normalization(data, scale=NORMALIZATION_SCALE):
     """
-    High pass filter
+    Compute inverse of the local norm of a feature
+
+    :param data: 2D or 3D amplitude image
+    :param scale: spatial scale averagin filter
+    :return: 2D or 3D normalization image 
+
+    normalized_data = normalization * data
     """
-    hp = data - radial(data, 'gaussian', scale=0)
 
-    if norm:
-        scale = np.sqrt(_pinv(radial(np.abs(hp)**2, 'gaussian', scale=norm_scale)))
-        hp = hp * scale
+    # Compute the local amplitude
+    a = np.sqrt(radial(np.abs(data)**2, 'gaussian', scale=scale))
 
-    return hp
+    # Gain is (1/a)
+    n = _pinv(a)
+
+    return n
 
 
-def gauss(data, scale=0, norm=True, norm_scale=NORM_SCALE):
+def input_normalization(data, high_pass_scale=HIGH_PASS_SCALE, normalization_scale=NORMALIZATION_SCALE):
     """
-    Zeroth order gaussian derivative (rotationally invariant)
+    Compute local normalization for the input in a manner similar to the retina
+    Normalize by the power of the high pass filtered image
     """
-    g = radial(data, 'gaussian', scale=scale)
 
-    if norm:
-        scale = np.sqrt(_pinv(radial(np.abs(g)**2, 'gaussian', scale=norm_scale)))
-        g *= scale
-
-    return g
+    hp = high_pass(data, scale=high_pass_scale)
+    norm = compute_local_normalization(hp, scale=normalization_scale)
+    output = norm*data
+    return output
 
 
-def grad(data, scale=0, norm=True, norm_scale=NORM_SCALE):
-    """
-    Rotational invariant of the first order gaussian derivative
-    """
-    ndim = _get_dim(data)
-
-    grad = gradient(data, scale=scale)
-    # [dx, dy], or
-    # [dx, dy, dz]
-
-    # Local power normalization
-    if norm:
-        if ndim == 2:
-            grad_pow = np.abs(grad[0])**2 + np.abs(grad[1])**2
-        else:
-            grad_pow = np.abs(grad[0])**2 + np.abs(grad[1])**2 + np.abs(grad[2])**2
-        n = np.sqrt(_pinv(radial(grad_pow, 'gaussian', scale=norm_scale)))
-        grad = [x*n for x in grad]
-
-    # The rotaional invariant is the vector magnitude
-    if ndim == 2:
-        g = np.sqrt(np.abs(grad[0])**2 + np.abs(grad[1])**2)
-    else:
-        g = np.sqrt(np.abs(grad[0])**2 + np.abs(grad[1])**2 + np.abs(grad[2])**2)
-
-    return g
-
-
-def hess(data, scale=0, norm=True, norm_scale=NORM_SCALE):
-    """
-    Rotational invariant of the second order gaussian derivative
-    """
-    ndim = _get_dim(data)
-
-    h = hessian(data, scale=scale)
-
-    # Local power normalization
-    if norm:
-        if ndim == 2:
-            # [dxx, dxy, dyy]
-            hess_pow = np.abs(h[0])**2 + 2*np.abs(h[1])**2 + np.abs(h[2])**2
-        else:
-            # [dxx, dxy, dxz, dyy, dyz, dzz]
-            hess_pow = np.abs(h[0])**2 + 2*np.abs(h[1])**2 + 2*np.abs(h[2])**2 + np.abs(h[3])**2 + 2*np.abs(h[4])**2 + np.abs(h[5])**2
-        n = np.sqrt(_pinv(radial(hess_pow, 'gaussian', scale=norm_scale)))
-        h = [x*n for x in h]
-
-    # Rotational invariants and Frobenius norm
-    if ndim == 2:
-        # [dxx, dxy, dyy]
-        # 1st trace l1 + l2
-        trace = h[0] + h[2]
-        # 2nd determinant l1*l2
-        # det = Dxx*Dyy - Dxy*Dyx
-        det = h[0]*h[2] - h[1]*h[1]
-        # frobenius norm sqrt(l1**2 + l2**2)
-        frobenius = np.sqrt(np.abs(h[0])**2 + 2*np.abs(h[1])**2 + np.abs(h[2])**2)
-
-        return (trace, det, frobenius)
-
-    else:
-        # [dxx, dxy, dxz, dyy, dyz, dzz]
-        # 1st trace l1 + l2 + l3
-        trace = h[0] + h[3] + h[5]
-        # 2nd l1*l2 + l1*l3 + l2*l3
-        # sec = Dxx*Dyy - Dxy*Dyx + Dxx*Dzz - Dxz*Dzx + Dyy*Dzz - Dyz*Dzy
-        sec = h[0]*h[3] - h[1]*h[1] + h[0]*h[5] - h[2]*h[2] + h[3]*h[5] - h[4]*h[4]
-        # 3rd determinant l1*l2*l3
-        # det = Dxx*(Dyy*Dzz - Dyz*Dzy) - Dxy*(Dyx*Dzz - Dyz*Dzx) + Dxz*(Dyx*Dzy - Dyy*Dzx)
-        det = h[0]*(h[3]*h[5]-h[4]*h[4]) - h[1]*(h[1]*h[5]-h[4]*h[2]) + h[2]*(h[1]*h[4]-h[3]*h[2])
-        # frobenius norm sqrt(l1**2 + l2**2 + l3**2)
-        frobenius = np.sqrt(np.abs(h[0])**2 + 2*np.abs(h[1])**2 + 2*np.abs(h[2])**2 + np.abs(h[3])**2 + 2*np.abs(h[4])**2) + np.abs(h[5])**2
-
-        return (trace, sec, det, frobenius)
-
-
-def textures(data, nscales=NSCALES, norm_scale=NORM_SCALE):
+def riff(data, nscales=NUM_SCALES, high_pass_scale=HIGH_PASS_SCALE, normalization_scale=NORMALIZATION_SCALE):
     """
     Compute multi-scale rotationally invariant image features
     from the zeroth, first, and second order gaussian derivatives
@@ -146,28 +73,57 @@ def textures(data, nscales=NSCALES, norm_scale=NORM_SCALE):
     t = []
     names = []
 
+    # Initialize the total power for final stage normalization
+    total_power = 0.0
+
+    # Stage 1, Local gain control
+    d = input_normalization(data, 
+                            high_pass_scale=high_pass_scale,
+                            normalization_scale=normalization_scale,
+                            )
+
     # The first feature is the high pass filter
-    feat = high_pass(data, norm=True, norm_scale=norm_scale)
+    feat = high_pass(data, scale=0)
     t.append(feat)
     names.append(f'High Pass')
-    
+    total_power += np.abs(feat)**2
+
     # The next set of features are the rotational invariants of the zeroth order gaussian derivatives
     for lev in range(nscales):
-        feat = gauss(data, scale=lev, norm=True, norm_scale=norm_scale)
+        s = lev+1
+        feat = radial(data, 'gaussian', scale=s)
         t.append(feat)
-        names.append(f'Gaussian S{lev}')
+        names.append(f'Gaussian S{s}')
+        total_power += np.abs(feat)**2
 
     # The next set of features are the rotational invariants of the first order gaussian derivatives
     for lev in range(nscales):
-        feat = grad(data, scale=lev, norm=True, norm_scale=norm_scale)
+        s = lev+1
+        g = gradient(data, scale=s)
+        feat = gradient_rot(g)
         t.append(feat)
-        names.append(f'Gradient S{lev}R1')
+        names.append(f'Gradient S{s}R1')
+        # The power is the square of the gradient amplitude
+        total_power += feat**2
 
     # The next set of features are the rotational invariants of the second order gaussian derivatives
     for lev in range(nscales):
-        hfeat = hess(data, scale=lev, norm=True, norm_scale=norm_scale)
-        for n in range(len(hfeat)):
-            t.append(hfeat[n])
-            names.append(f'Hessian S{lev}R{n+1}')
+        s = lev+1
+        h = hessian(data, scale=s)
+        feat = hessian_rot(h)
+        # The power is the the square of the Frobenius norm, the last rotationally invariant feature
+        total_power += feat[-1]**2
+
+        for n in range(len(feat)):
+            t.append(feat[n])
+            names.append(f'Hessian S{s}R{n+1}')
+
+    # The final amplitude
+    total_amplitude = np.sqrt(total_power)
+    # The final local normalization
+    norm = compute_local_normalization(total_amplitude, scale=normalization_scale)
+    # Loop over the features and scale them all
+    for n in range(len(t)):
+        t[n] = norm*t[n]
 
     return t, names
