@@ -82,45 +82,40 @@ def riff(data, nscales=NUM_SCALES, high_pass_scale=HIGH_PASS_SCALE, normalizatio
                             normalization_scale=normalization_scale,
                             )
 
+    # Step 2, feature generation
     # The first feature is the high pass filter
-    feat = high_pass(data, scale=0)
+    feat = high_pass(d, scale=0)
     t.append(feat)
     names.append(f'High Pass')
     total_power += np.abs(feat)**2
 
-    # The next set of features are the rotational invariants of the zeroth order gaussian derivatives
     for lev in range(nscales):
-        s = lev+1
-        feat = radial(data, 'gaussian', scale=s)
+        # The next set of features are the rotational invariants of the zeroth order gaussian derivatives
+        feat = radial(d, 'gaussian', scale=lev)
         t.append(feat)
-        names.append(f'Gaussian S{s}')
+        names.append(f'Gaussian S{lev}')
         total_power += np.abs(feat)**2
 
-    # The next set of features are the rotational invariants of the first order gaussian derivatives
-    for lev in range(nscales):
-        s = lev+1
-        g = gradient(data, scale=s)
+        # The next set of features are the rotational invariants of the first order gaussian derivatives
+        g = gradient(d, scale=lev)
         feat = gradient_rot(g)
         t.append(feat)
-        names.append(f'Gradient S{s}R1')
+        names.append(f'Gradient S{lev}R1')
         # The power is the square of the gradient amplitude
         total_power += feat**2
 
-    # The next set of features are the rotational invariants of the second order gaussian derivatives
-    for lev in range(nscales):
-        s = lev+1
-        h = hessian(data, scale=s)
+        # The next set of features are the rotational invariants of the second order gaussian derivatives
+        h = hessian(d, scale=lev)
         feat = hessian_rot(h)
         # The power is the the square of the Frobenius norm, the last rotationally invariant feature
         total_power += feat[-1]**2
-
         for n in range(len(feat)):
             t.append(feat[n])
-            names.append(f'Hessian S{s}R{n+1}')
+            names.append(f'Hessian S{lev}R{n+1}')
 
     # The final amplitude
     total_amplitude = np.sqrt(total_power)
-    # The final local normalization
+    # Step 3, the final local normalization
     norm = compute_local_normalization(total_amplitude, scale=normalization_scale)
     # Loop over the features and scale them all
     for n in range(len(t)):
