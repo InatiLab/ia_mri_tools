@@ -3,8 +3,10 @@ import numpy as np
 from numpy.fft import fftn, ifftn, fftshift, ifftshift
 
 
-def scale_coordinates(shape, scale):
-    
+def _scale_coordinates(shape, scale):
+    """
+    Compute the scaled image coordinates on the box [-pi,pi]^d
+    """    
     ndim = len(shape)
     # Compute the scaled coordinate system
     if ndim == 2:
@@ -35,6 +37,15 @@ def scale_coordinates(shape, scale):
         raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(len(shape)))
 
 
+def _radius(shape, scale):
+    """
+    Compute the radius in scaled image coordinates
+    """
+    x = _scale_coordinates(shape, scale)
+    r = np.sqrt(np.sum(np.square(x), axis=0))
+    return r
+
+
 def _pinv(x, p=2):
     """
     Pseudoinverse with regularization
@@ -58,23 +69,17 @@ def radial(data, func, scale=1, truncate=False):
     if func.lower() not in known_filters:
         raise RuntimeError('Unsupported filter function error {}.  Must be one of {}.'.format(func, known_filters))
 
-    # Get the scaled coordinate system, [-pi,pi]^d
-    if data.ndim == 2:
-        x, y = scale_coordinates(data.shape, scale)
-        rsq = np.sqrt(x*x + y*y)
-    elif data.ndim == 3:
-        x, y, z = scale_coordinates(data.shape, scale)
-        rsq = np.sqrt(x*x + y*y + z*z)
-    else:
-        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(data.ndim))
-        
+    # Get the radius scaled coordinate system
+    r = _radius(data.shape, scale)
+    rsq = r**2
+
     # Compute filter as a function of radius
     if func.lower() == 'gaussian':
         # Gaussian, 0th Hermite, etc.
         g = np.exp(-0.5*rsq)
     elif func.lower() == 'dog':
-        # Difference of Gaussians
-        g = np.exp(-0.5*rsq) - np.exp(-0.5*(4.0*rsq))
+        # Difference of Gaussians, one level apart
+        g = np.exp(-0.5*rsq) - np.exp(-0.5*(2.0*rsq))
     elif func.lower() == 'derivative':
         # Derivative of Gaussian, 1st Hermite
         g = -1.0/(math.pi**2) * (1.0 - math.pi**2 * rsq) * np.exp(-0.5*rsq)
@@ -86,7 +91,7 @@ def radial(data, func, scale=1, truncate=False):
 
     # Truncate on a sphere of r=pi^2
     if truncate:
-        g[rsq > math.pi**2] = 0.0
+        g[r > math.pi] = 0.0
 
     # Apply the filter
     output = ifftn(ifftshift(g*fftshift(fftn(data))))
@@ -98,118 +103,242 @@ def radial(data, func, scale=1, truncate=False):
         return output
 
 
-def high_pass(data, scale=0):
+def gaussian(data, scale=1):
+    """
+    Rotationally symmetric Gaussian filter in the fourier domain
+    """
+
+    # Get the radius scaled coordinate system
+    r = _radius(data.shape, scale)
+
+    # Compute filter as a function of radius
+    g = np.exp(-0.5*r**2)
+
+    # Apply the filter
+    output = ifftn(ifftshift(g*fftshift(fftn(data))))
+
+    # Ensure that real functions stay real
+    if np.isrealobj(data):
+        return np.real(output)
+    else:
+        return output
+
+
+def high_pass(data, scale):
     """
     High pass filter
+    data - G(data,s)
     """
-    hp = data - radial(data, 'gaussian', scale=scale)
+    hp = data - gaussian(data, scale=scale)
 
     return hp
 
 
-def gradient(data, scale=1, truncate=False):
+def low_pass(data, scale):
     """
-    Gradient filter in the fourier domain with truncation
+    Low pass filter
+    G(data,s)
+    """
+    lp = gaussian(data, scale=scale)
+
+    return lp
+
+
+def band_pass(data, scale_one, scale_two):
+    """
+    Band pass filter
+    Difference of two gaussians
+    G(data, s1) - G(data, s2)
+    """
+    bp =  gaussian(data, scale=scale_one) - gaussian(data, scale=scale_two)
+
+    return bp
+
+
+def gradient(data, scale=1):
+    """
+    Gradient, Gaussian 1st order partial derivative filter in the fourier domain
     """
     
-    # Get the scaled coordinate system, [-pi,pi]^d
-    if data.ndim == 2:
-        x, y = scale_coordinates(data.shape, scale)
-        rsq = np.sqrt(x*x + y*y)
-    elif data.ndim == 3:
-        x, y, z = scale_coordinates(data.shape, scale)
-        rsq = np.sqrt(x*x + y*y + z*z)
-    else:
-        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(data.ndim))
-
-    # Build the filter in the fourier domain
-
-    # 1) Gaussian
-    g = np.exp(-0.5*rsq)
-
-    # 2) Truncate on a sphere of r=pi
-    if truncate:
-        g[rsq > math.pi**2] = 0.0
-
-    # 3) Gradient in each direction
+    # Gausian gradient in each direction
     # i*x*g, i*y*g, i*z*g etc.
-    temp = 1j * g * fftshift(fftn(data))
-    gx = ifftn(ifftshift(x*temp))
-    gy = ifftn(ifftshift(y*temp))
-    if data.ndim == 3:
-        gz = ifftn(ifftshift(z*temp))
 
-    # Ensure that real functions stay real
-    if np.isrealobj(data):
-        gx = np.real(gx)
-        gy = np.real(gy)
-        if data.ndim == 3:
-            gz = np.real(gz)
-
+    # Get the scaled coordinate system
     if data.ndim == 2:
-        return [gx, gy]
+        x, y = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2
+        g = np.exp(-0.5*rsq)
+        temp = 1j*g*fftshift(fftn(data))
+        dx = ifftn(ifftshift(x*temp))
+        dy = ifftn(ifftshift(y*temp))
+        # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dx = np.real(dx)
+            dy = np.real(dy)
+            return [dx, dy]
+
     elif data.ndim == 3:
-        return [gx, gy, gz]
+        x, y, z = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2 + z**2
+        g = np.exp(-0.5*rsq)
+        temp = 1j*g*fftshift(fftn(data))
+        dx = ifftn(ifftshift(x*temp))
+        dy = ifftn(ifftshift(y*temp))
+        dz = ifftn(ifftshift(z*temp))
+        # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dx = np.real(dx)
+            dy = np.real(dy)
+            dz = np.real(dy)
+            return [dx, dy, dz]
     else:
-        raise RuntimeError('Unsupported number of dimensions {}.'.format(data.ndim))
+        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(len(shape)))
 
 
-def hessian(data, scale=1, truncate=False):
+def hessian(data, scale=1):
     """                                                                                                                                                              
-    Hessian, 2nd order partial derivatives filter in the fourier domain with truncation                                                                                                            
+    Hessian, Gaussian 2nd order partial derivatives filter in the fourier domain                                                                                                       
     """
 
-    # Get the scaled coordinate system, [-pi,pi]^d
-    if data.ndim == 2:
-        x, y = scale_coordinates(data.shape, scale)
-        rsq = np.sqrt(x*x + y*y)
-    elif data.ndim == 3:
-        x, y, z = scale_coordinates(data.shape, scale)
-        rsq = np.sqrt(x*x + y*y + z*z)
-    else:
-        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(data.ndim))
-
-    # Build the filter in the fourier domain
-
-    # 1) Gaussian
-    g = np.exp(-0.5*rsq)
-
-    # 2) Truncate on a sphere of r=pi
-    if truncate:
-        g[rsq > math.pi**2] = 0.0
-
-    # 3) Gradient in each direction
+    # Gausian 2nd derivative in each direction
     # (i*x)*(i*y)*g, etc
-    temp = -1.0 * g * fftshift(fftn(data))
-    dxx = ifftn(ifftshift(x*x*temp))
-    dxy = ifftn(ifftshift(x*y*temp))
-    dyy = ifftn(ifftshift(y*y*temp))
-    if data.ndim == 3:
+
+    # Get the scaled coordinate system
+    if data.ndim == 2:
+        x, y = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2
+        g = np.exp(-0.5*rsq)
+        temp = -1.0*g*fftshift(fftn(data))
+        dxx = ifftn(ifftshift(x*x*temp))
+        dxy = ifftn(ifftshift(x*y*temp))
+        dyy = ifftn(ifftshift(y*y*temp))
+       # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dxx = np.real(dxx)
+            dxy = np.real(dxy)
+            dyy = np.real(dxy)
+        return [dxx, dxy, dyy]
+
+    elif data.ndim == 3:
+        x, y, z = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2 + z**2
+        g = np.exp(-0.5*rsq)
+        temp = -1.0*g*fftshift(fftn(data))
+        dxx = ifftn(ifftshift(x*x*temp))
+        dxy = ifftn(ifftshift(x*y*temp))
         dxz = ifftn(ifftshift(x*z*temp))
+        dyy = ifftn(ifftshift(y*y*temp))
         dyz = ifftn(ifftshift(y*z*temp))
         dzz = ifftn(ifftshift(z*z*temp))
-
-    # Ensure that real functions stay real                                                                                                                           
-    if np.isrealobj(data):
-        dxx = np.real(dxx)
-        dxy = np.real(dxy)
-        dyy = np.real(dyy)
-        if data.ndim == 3:
+        # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dxx = np.real(dxx)
+            dxy = np.real(dxy)
             dxz = np.real(dxz)
+            dyy = np.real(dyy)
             dyz = np.real(dyz)
             dzz = np.real(dzz)
-
-    if data.ndim == 2:
-        return [dxx, dxy, dyy]
-    elif data.ndim == 3:
         return [dxx, dxy, dxz, dyy, dyz, dzz]
+
     else:
-        raise RuntimeError('Unsupported number of dimensions {}.'.format(data.ndim))
+        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(len(shape)))
+
+
+def gradient_band_pass(data, scale=1):
+    """
+    Gradient, Gaussian 1st order partial derivative filter in the fourier domain
+    """
+    
+    # Gausian gradient in each direction
+    # g = G(s) - G(s+1)
+    # i*x*g, i*y*g, i*z*g etc.
+
+    # Get the scaled coordinate system
+    if data.ndim == 2:
+        x, y = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2
+        g = np.exp(-0.5*rsq) - np.exp(-0.5*4*rsq)
+        temp = 1j*g*fftshift(fftn(data))
+        dx = ifftn(ifftshift(x*temp))
+        dy = ifftn(ifftshift(y*temp))
+        # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dx = np.real(dx)
+            dy = np.real(dy)
+            return [dx, dy]
+
+    elif data.ndim == 3:
+        x, y, z = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2 + z**2
+        g = np.exp(-0.5*rsq)
+        temp = 1j*g*fftshift(fftn(data))
+        dx = ifftn(ifftshift(x*temp))
+        dy = ifftn(ifftshift(y*temp))
+        dz = ifftn(ifftshift(z*temp))
+        # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dx = np.real(dx)
+            dy = np.real(dy)
+            dz = np.real(dy)
+            return [dx, dy, dz]
+    else:
+        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(len(shape)))
+
+
+def hessian_band_pass(data, scale=1):
+    """                                                                                                                                                              
+    Hessian, Gaussian 2nd order partial derivatives filter in the fourier domain                                                                                                       
+    """
+
+    # Gausian 2nd derivative in each direction
+    # g = G(s) - G(s+1)
+    # from one scale to the next r**2 -> 4*r**2
+    # (i*x)*(i*y)*g, etc
+
+    # Get the scaled coordinate system
+    if data.ndim == 2:
+        x, y = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2
+        g = np.exp(-0.5*rsq) - np.exp(-0.5*4*rsq)
+        temp = -1.0*g*fftshift(fftn(data))
+        dxx = ifftn(ifftshift(x*x*temp))
+        dxy = ifftn(ifftshift(x*y*temp))
+        dyy = ifftn(ifftshift(y*y*temp))
+       # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dxx = np.real(dxx)
+            dxy = np.real(dxy)
+            dyy = np.real(dyy)
+        return [dxx, dxy, dyy]
+
+    elif data.ndim == 3:
+        x, y, z = _scale_coordinates(data.shape, scale)
+        rsq = x**2 + y**2 + z**2
+        g = np.exp(-0.5*rsq)
+        temp = -1.0*g*fftshift(fftn(data))
+        dxx = ifftn(ifftshift(x*x*temp))
+        dxy = ifftn(ifftshift(x*y*temp))
+        dxz = ifftn(ifftshift(x*z*temp))
+        dyy = ifftn(ifftshift(y*y*temp))
+        dyz = ifftn(ifftshift(y*z*temp))
+        dzz = ifftn(ifftshift(z*z*temp))
+        # Ensure that real functions stay real
+        if np.isrealobj(data):
+            dxx = np.real(dxx)
+            dxy = np.real(dxy)
+            dxz = np.real(dxz)
+            dyy = np.real(dyy)
+            dyz = np.real(dyz)
+            dzz = np.real(dzz)
+        return [dxx, dxy, dxz, dyy, dyz, dzz]
+
+    else:
+        raise RuntimeError('Unsupported number of dimensions {}. We only supports 2 or 3D arrays.'.format(len(shape)))
 
 
 def hessian_power(h):
     """
-    Power a the hessian filter band
+    Power in the hessian filter band
     Frobenius norm squared
     """
     if len(h) == 2:
@@ -252,8 +381,6 @@ def hessian_rot(h):
         det = h[0]*h[2] - h[1]*h[1]
         # frobenius norm sqrt(l1**2 + l2**2)
         frobenius = np.sqrt(np.abs(h[0])**2 + 2*np.abs(h[1])**2 + np.abs(h[2])**2)
-        # normalize the determinant by the frobenius norm for scaling
-        det = det * _pinv(frobenius)
 
         return (trace, det, frobenius)
 
@@ -269,10 +396,6 @@ def hessian_rot(h):
         det = h[0]*(h[3]*h[5]-h[4]*h[4]) - h[1]*(h[1]*h[5]-h[4]*h[2]) + h[2]*(h[1]*h[4]-h[3]*h[2])
         # frobenius norm sqrt(l1**2 + l2**2 + l3**2)
         frobenius = np.sqrt(np.abs(h[0])**2 + 2*np.abs(h[1])**2 + 2*np.abs(h[2])**2 + np.abs(h[3])**2 + 2*np.abs(h[4])**2) + np.abs(h[5])**2
-
-        # normalize the second and third rotational invariants by the frobenius norm for scaling
-        sec = sec * _pinv(frobenius)
-        det = det * _pinv(frobenius**(3/2))
 
         return (trace, sec, det, frobenius)
 

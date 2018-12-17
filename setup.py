@@ -22,7 +22,7 @@ test_requirements = [
 
 setup(
     name='ia_mri_tools',
-    version='0.7.0',
+    version='0.7.2',
     description="Python tools for MRI data analysis.",
     long_description=readme + '\n\n' + history,
     author="Souheil J. Inati",
