@@ -22,7 +22,7 @@ test_requirements = [
 
 setup(
     name='ia_mri_tools',
-    version='0.7.3',
+    version='0.7.4',
     description="Python tools for MRI data analysis.",
     long_description=readme + '\n\n' + history,
     author="Souheil J. Inati",
@@ -35,8 +35,7 @@ setup(
     entry_points={
         'console_scripts': [
             'ia_estimate_signal_mask=ia_mri_tools.cli:estimate_signal_mask',
-            'ia_estimate_coil_correction=ia_mri_tools.cli:estimate_coil_correction',
-            'ia_apply_coil_correction=ia_mri_tools.cli:apply_coil_correction',
+            'ia_coil_correction=ia_mri_tools.cli:coil_correction',
             'ia_estimate_textures=ia_mri_tools.cli:estimate_textures',
             'ia_normalize_local=ia_mri_tools.cli:normalize_local',
         ]
