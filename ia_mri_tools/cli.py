@@ -168,10 +168,9 @@ def estimate_signal_mask(input_images, threshold, output):
 @click.option('--output', type=click.STRING, default='out.nii',
               help='Output filename for the textures image.')
 @click.argument('input_image', type=click.STRING)
-@click.option('--nscales', type=click.INT, default=3, help='number of spatial scales')
-@click.option('--high_pass_scale', type=click.INT, default=4, help='scale for first stage of local gain control')
-@click.option('--normalization_scale', type=click.INT, default=5, help='scale for output gain control')
-def estimate_textures(input_image, nscales, high_pass_scale, normalization_scale, output):
+@click.option('--nscales', type=click.INT, default=4, help='number of spatial scales')
+@click.option('--normalization_scale', type=click.INT, default=None, help='scale for output gain control')
+def estimate_textures(input_image, nscales, normalization_scale, output):
     """Estimate 3D multiscale textures."""
 
     click.echo('Estimate 3D multiscale textures for {}.'.format(input_image))
@@ -180,7 +179,7 @@ def estimate_textures(input_image, nscales, high_pass_scale, normalization_scale
     im = nibabel.load(input_image)
 
     # compute the textures
-    t, names = riff(im.get_data(), nscales=nscales, high_pass_scale=high_pass_scale, normalization_scale=normalization_scale)
+    t, names = riff(im.get_data(), nscales=nscales, normalization_scale=normalization_scale)
     nfeats = len(t)
     out = np.zeros([*t[0].shape, nfeats], t[0].dtype)
     for f in range(nfeats):
